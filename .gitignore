@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+.env
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# App data
+uploads/
+files/
+logs/
+*.sqlite3
