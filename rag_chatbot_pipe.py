@@ -19,35 +19,35 @@ from langchain_core.documents import Document
 from langchain_core.runnables import RunnableLambda
 from pathlib import Path
 
-def main(question):
-    FOLDER_PATH = './files'
+def main(question: str, file_path: str):
+    """Run RAG over a single document provided explicitly by file_path."""
 
-    files = list(Path(FOLDER_PATH).iterdir())
+    if not file_path:
+        raise ValueError("file_path must be provided explicitly.")
 
-    if len(files) != 1:
-        raise ValueError('Excpected exactly one file.')
+    file_path = str(file_path)
 
-    file_path = files[0]
+    # Loader auto-detect (works even if the temp file path has no extension)
+    pages = None
+    last_err = None
 
-    def get_file_type(file_path: str) -> str:
-        return Path(file_path).suffix.lower()
+    for try_loader in (
+        lambda p: PyPDFLoader(p).load(),
+        lambda p: Docx2txtLoader(p).load(),
+        lambda p: TextLoader(p, encoding="utf-8").load(),
+    ):
+        try:
+            pages = try_loader(file_path)
+            last_err = None
+            break
+        except Exception as e:
+            last_err = e
 
-    file_type = get_file_type(file_path)
-
-    if file_type == '.pdf':
-        loader = PyPDFLoader(file_path)
-        pages = loader.load()
-        
-    elif file_type == '.txt':
-        loader = TextLoader(file_path)
-        pages = loader.load()
-
-    elif file_type == '.docx':
-        loader = Docx2txtLoader(file_path)
-        pages = loader.load()
-        
-    else:
-        raise TypeError('File type not matching.')
+    if pages is None:
+        raise TypeError(
+            f"Could not load file at '{file_path}'. Supported: PDF, DOCX, TXT. "
+            f"Last error: {last_err}"
+        )
         
     md_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=[
@@ -113,7 +113,8 @@ def main(question):
 
     chat = ChatOpenAI(
         model='gpt-4o-mini',
-        temperature=0
+        temperature=0,
+        streaming=True
         )
 
     def format_docs(docs):

@@ -1,54 +1,48 @@
-from flask import Flask, jsonify, request
-from werkzeug.utils import secure_filename
+import streamlit as st
+from brain import upload, ask
+import tempfile
 from pathlib import Path
-from rag_chatbot_pipe import main
-from flask_cors import CORS
 
-app = Flask(__name__)
-CORS(app)
+def save_tempfile(file):
+    # Keep extension so your loaders can pick the right parser (pdf/docx/txt)
+    suffix = Path(file.name).suffix if getattr(file, "name", None) else ""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file.getbuffer())
+        return tmp.name
 
-BASE_DIR = Path(__file__).resolve().parent
-UPLOAD_DIR = BASE_DIR / 'files'
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-@app.route('/')
-def start():
-    UPLOAD_DIR = Path("files")
-
-    files = [f for f in UPLOAD_DIR.iterdir() if f.is_file()]
-
-    if len(files) == 1:
-        files[0].unlink()
+if 'doc_ready' not in st.session_state:
+    st.session_state.doc_ready = False
     
-    return jsonify({"message": 'API ready', "status": "ok"})
+if 'doc_path' not in st.session_state:
+    st.session_state.doc_path = None
 
-@app.route('/upload', methods=['POST'])
-def upload():
-    if 'file' not in request.files:
-        return jsonify({'message': 'Missing file field.'})
+file = st.file_uploader('Upload your file.', type=['pdf', 'docx', 'txt'])
 
-    f = request.files['file']
+if file:
+    if st.button('Process'):
+        path = save_tempfile(file)
+        st.session_state.doc_path = path
+        
+        with st.spinner('Indexing...'):
+            upload(path)
+            
+        st.session_state.doc_ready = True
+        st.success('Document processed.')
+        
+if st.session_state.doc_ready:
     
-    filename = secure_filename(f.filename)
-    save_path = UPLOAD_DIR / filename
+    question = st.text_input('Ask question: ')
     
-    f.save(save_path)
-
-    return jsonify({
-        "status": "uploaded",
-        "filename": save_path.name,
-        "path": str(save_path),
-        "size_bytes": save_path.stat().st_size
-    })
-    
-@app.route('/ask', methods=['POST'])
-def ask():
-    data = request.get_json()
-    q = data.get('question')
-    
-    response = main(q)
-    
-    return jsonify({'response': response})
-
-if __name__ == '__main__':
-    app.run(debug=True)
+    if st.button('Ask'):
+        if not question:
+            st.warning('Enter your question first')
+            
+        else:
+            with st.spinner('Thinking...'):
+            
+                response = ask(q=question, file_path=st.session_state.doc_path)
+        
+                st.write(response)
+                
+else:
+    st.info('Upload a file and click "process".')
